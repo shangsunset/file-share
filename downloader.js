@@ -15,22 +15,33 @@ if (!id || !chunk) {
 const channel = DC()
 channel.join(id)
 
-channel.once('peer', (id, peer, type) => {
+channel.once('peer', (peerId, peer, type) => {
   console.log('found a new peer', peer, type)
   const socket = net.connect(peer.port, peer.host)
-  // const downloadedFilename = 'file-' + Date.now()
-  // const writer = fs.createWriteStream(downloadedFilename)
   const protocol = msgpack(socket)
 
-  protocol.on('data', function (msg) {
-    // For now just output the message we got from the server
-    console.log(msg)
+  protocol.once('data', (msg) => {
+    const hashes = msg.hashes
+    if (!hashValidate(hashes.join('\n'), id)) {
+      throw new Error('invalid hashes')
+    }
+
+    protocol.on('data', msg => {
+      if (!hashValidate(msg.data, hashes[msg.chunk])) {
+        throw new Error('invalid chunk hash')
+      }
+      console.log(msg)
+    })
   })
 
   console.log('Fetching chunk %d from %s...', chunk, id)
   protocol.write({type: 'request', chunk: chunk})
-  // socket.pipe(process.stdout)
-  // writer.on('finish', () => {
-  //   channel.destroy()
-  // })
 })
+
+const hashValidate = (value, expected) => {
+  var hashed = crypto.createHash('sha256')
+    .update(value)
+    .digest()
+    .toString('hex')
+  return hashed === expected
+}
